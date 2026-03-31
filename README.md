@@ -50,4 +50,3 @@ Boas práticas de React (hooks, roteamento protegido, estado local)
 Sistema de autenticação funcional com persistência
 Tratamento cuidadoso de erros e feedback visual ao usuário
 
-
