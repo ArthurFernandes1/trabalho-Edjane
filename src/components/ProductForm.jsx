@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Save } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, Maximize2, Minus, RotateCcw, Save, X, ZoomIn } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Modal from './Modal'
 import { CATEGORIES, getCurrentUser, getProductById, upsertProduct } from '../utils/storage'
@@ -13,6 +13,7 @@ const INITIAL_FORM = {
   imageUrl: '',
   status: 'Ativo',
 }
+const PLACEHOLDER_IMAGE = 'https://placehold.co/600x400/e2e8f0/334155?text=Sem+Imagem'
 
 function ProductForm() {
   const navigate = useNavigate()
@@ -22,6 +23,10 @@ function ProductForm() {
 
   const [form, setForm] = useState(INITIAL_FORM)
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'info' })
+  const [expandedImage, setExpandedImage] = useState(false)
+  const [zoom, setZoom] = useState(1)
+  const pinchDistanceRef = useRef(null)
+  const pinchStartZoomRef = useRef(1)
 
   useEffect(() => {
     if (!isEdit) return
@@ -30,8 +35,8 @@ function ProductForm() {
     if (!product || product.ownerEmail !== user?.email) {
       setModal({
         isOpen: true,
-        title: 'Produto nao encontrado',
-        message: 'Este produto nao existe ou nao pertence ao usuario logado.',
+        title: 'Produto não encontrado',
+        message: 'Este produto não existe ou não pertence ao usuário logado.',
         type: 'error',
       })
       return
@@ -55,17 +60,17 @@ function ProductForm() {
 
   const validate = () => {
     if (!form.name.trim() || !form.category || !form.description.trim()) {
-      return 'Preencha todos os campos obrigatorios.'
+      return 'Preencha todos os campos obrigatórios.'
     }
 
     const price = Number(form.price)
     if (Number.isNaN(price) || price <= 0) {
-      return 'Preco deve ser um numero maior que 0.'
+      return 'Preço deve ser um número maior que 0.'
     }
 
     const quantity = Number(form.quantity)
     if (!Number.isInteger(quantity) || quantity < 0) {
-      return 'Quantidade deve ser um numero inteiro maior ou igual a 0.'
+      return 'Quantidade deve ser um número inteiro maior ou igual a 0.'
     }
 
     return null
@@ -76,7 +81,7 @@ function ProductForm() {
     const errorMessage = validate()
 
     if (errorMessage) {
-      setModal({ isOpen: true, title: 'Validacao', message: errorMessage, type: 'error' })
+      setModal({ isOpen: true, title: 'Validação', message: errorMessage, type: 'error' })
       return
     }
 
@@ -96,9 +101,44 @@ function ProductForm() {
     setModal({
       isOpen: true,
       title: isEdit ? 'Produto atualizado' : 'Produto criado',
-      message: isEdit ? 'As alteracoes foram salvas.' : 'Novo produto cadastrado com sucesso.',
+      message: isEdit ? 'As alterações foram salvas.' : 'Novo produto cadastrado com sucesso.',
       type: 'success',
     })
+  }
+
+  const applyZoom = (value) => {
+    setZoom(Math.min(4, Math.max(1, Number(value.toFixed(2)))))
+  }
+
+  const closeImageViewer = () => {
+    setExpandedImage(false)
+    setZoom(1)
+    pinchDistanceRef.current = null
+  }
+
+  const handleWheelZoom = (event) => {
+    event.preventDefault()
+    const delta = event.deltaY < 0 ? 0.15 : -0.15
+    applyZoom(zoom + delta)
+  }
+
+  const handleTouchStart = (event) => {
+    if (event.touches.length !== 2) return
+    const [a, b] = event.touches
+    pinchDistanceRef.current = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+    pinchStartZoomRef.current = zoom
+  }
+
+  const handleTouchMove = (event) => {
+    if (event.touches.length !== 2 || !pinchDistanceRef.current) return
+    const [a, b] = event.touches
+    const currentDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+    const scale = currentDistance / pinchDistanceRef.current
+    applyZoom(pinchStartZoomRef.current * scale)
+  }
+
+  const handleTouchEnd = () => {
+    pinchDistanceRef.current = null
   }
 
   return (
@@ -160,7 +200,7 @@ function ProductForm() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Preco *</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Preço *</label>
             <input
               name="price"
               type="number"
@@ -187,7 +227,7 @@ function ProductForm() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Descricao *</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Descrição *</label>
           <textarea
             name="description"
             value={form.description}
@@ -206,6 +246,29 @@ function ProductForm() {
             placeholder="https://..."
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
           />
+          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+            <div className="relative aspect-[4/3] w-full">
+              <img
+                src={form.imageUrl.trim() || PLACEHOLDER_IMAGE}
+                alt={form.name || 'Preview do produto'}
+                className="h-full w-full object-cover object-center"
+                onError={(event) => {
+                  event.currentTarget.src = PLACEHOLDER_IMAGE
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setExpandedImage(true)
+                  setZoom(1)
+                }}
+                className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg bg-slate-900/70 px-2 py-1 text-xs font-medium text-white transition hover:bg-slate-900"
+              >
+                <Maximize2 size={14} />
+                Tela cheia
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="flex justify-end">
@@ -225,11 +288,73 @@ function ProductForm() {
         message={modal.message}
         type={modal.type}
         onConfirm={() => {
-          const isSuccess = modal.type === 'success' || modal.title === 'Produto nao encontrado'
+          const isSuccess = modal.type === 'success' || modal.title === 'Produto não encontrado'
           setModal((prev) => ({ ...prev, isOpen: false }))
           if (isSuccess) navigate('/products')
         }}
       />
+
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/90 p-4"
+          onClick={closeImageViewer}
+        >
+          <div className="absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-2 rounded-xl bg-slate-900/80 p-2 text-white">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                applyZoom(zoom - 0.2)
+              }}
+              className="rounded-lg p-2 hover:bg-white/10"
+            >
+              <Minus size={16} />
+            </button>
+            <span className="min-w-14 text-center text-xs font-semibold">{Math.round(zoom * 100)}%</span>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                applyZoom(zoom + 0.2)
+              }}
+              className="rounded-lg p-2 hover:bg-white/10"
+            >
+              <ZoomIn size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setZoom(1)
+              }}
+              className="rounded-lg p-2 hover:bg-white/10"
+            >
+              <RotateCcw size={16} />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={closeImageViewer}
+            className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
+          >
+            <X size={20} />
+          </button>
+          <img
+            src={form.imageUrl.trim() || PLACEHOLDER_IMAGE}
+            alt={form.name || 'Preview do produto'}
+            className="max-h-[90vh] w-auto max-w-[95vw] rounded-xl object-contain shadow-2xl transition-transform duration-100"
+            style={{ transform: `scale(${zoom})` }}
+            onClick={(event) => event.stopPropagation()}
+            onWheel={handleWheelZoom}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onError={(event) => {
+              event.currentTarget.src = PLACEHOLDER_IMAGE
+            }}
+          />
+        </div>
+      )}
     </main>
   )
 }

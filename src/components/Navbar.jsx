@@ -15,7 +15,7 @@ function Navbar({ user }) {
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <Link to="/products" className="flex items-center gap-2 text-slate-800">
           <Package size={20} className="text-indigo-600" />
-          <span className="text-lg font-semibold">Gestao de Produtos</span>
+          <span className="text-lg font-semibold">Gestão de Produtos</span>
         </Link>
 
         <div className="flex items-center gap-3">

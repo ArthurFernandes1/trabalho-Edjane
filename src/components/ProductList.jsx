@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Maximize2, Minus, Pencil, Plus, RotateCcw, Search, Trash2, X, ZoomIn } from 'lucide-react'
 import Modal from './Modal'
 import { CATEGORIES, deleteProduct, formatPrice, getCurrentUser, getUserProducts } from '../utils/storage'
 
@@ -22,6 +22,10 @@ function ProductList() {
     cancelText: undefined,
     onConfirm: undefined,
   })
+  const [expandedImage, setExpandedImage] = useState(null)
+  const [zoom, setZoom] = useState(1)
+  const pinchDistanceRef = useRef(null)
+  const pinchStartZoomRef = useRef(1)
 
   const filteredProducts = useMemo(() => {
     const query = search.toLowerCase().trim()
@@ -72,7 +76,7 @@ function ProductList() {
 
     setModal({
       isOpen: true,
-      title: 'Confirmar exclusao',
+      title: 'Confirmar exclusão',
       message: `Deseja excluir o produto "${product.name}"?`,
       type: 'error',
       confirmText: 'Excluir',
@@ -83,6 +87,46 @@ function ProductList() {
         setModal((prev) => ({ ...prev, isOpen: false }))
       },
     })
+  }
+
+  const closeImageViewer = () => {
+    setExpandedImage(null)
+    setZoom(1)
+    pinchDistanceRef.current = null
+  }
+
+  const openImageViewer = (src, alt) => {
+    setExpandedImage({ src, alt })
+    setZoom(1)
+  }
+
+  const applyZoom = (value) => {
+    setZoom(Math.min(4, Math.max(1, Number(value.toFixed(2)))))
+  }
+
+  const handleWheelZoom = (event) => {
+    event.preventDefault()
+    const delta = event.deltaY < 0 ? 0.15 : -0.15
+    applyZoom(zoom + delta)
+  }
+
+  const handleTouchStart = (event) => {
+    if (event.touches.length !== 2) return
+    const [a, b] = event.touches
+    pinchDistanceRef.current = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+    pinchStartZoomRef.current = zoom
+  }
+
+  const handleTouchMove = (event) => {
+    if (event.touches.length !== 2 || !pinchDistanceRef.current) return
+    const [a, b] = event.touches
+    const currentDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+    const scale = currentDistance / pinchDistanceRef.current
+    applyZoom(pinchStartZoomRef.current * scale)
+  }
+
+  const handleTouchEnd = () => {
+    pinchDistanceRef.current = null
   }
 
   return (
@@ -128,7 +172,7 @@ function ProductList() {
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
         >
           <option value="name">Ordenar por nome</option>
-          <option value="price">Ordenar por preco</option>
+          <option value="price">Ordenar por preço</option>
           <option value="quantity">Ordenar por quantidade</option>
         </select>
 
@@ -170,14 +214,28 @@ function ProductList() {
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProducts.map((product) => (
             <article key={product.id} className="overflow-hidden rounded-2xl bg-white shadow">
-              <img
-                src={product.imageUrl || PLACEHOLDER_IMAGE}
-                alt={product.name}
-                className="h-48 w-full object-cover"
-                onError={(event) => {
-                  event.currentTarget.src = PLACEHOLDER_IMAGE
-                }}
-              />
+              <div className="relative aspect-[4/3] w-full overflow-hidden border-b border-slate-200 bg-white p-3">
+                <img
+                  src={product.imageUrl || PLACEHOLDER_IMAGE}
+                  alt={product.name}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full rounded-lg border border-slate-200 bg-slate-50 object-contain object-center p-1 transition duration-300 hover:scale-[1.02]"
+                  onClick={() => openImageViewer(product.imageUrl || PLACEHOLDER_IMAGE, product.name)}
+                  onError={(event) => {
+                    event.currentTarget.src = PLACEHOLDER_IMAGE
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => openImageViewer(product.imageUrl || PLACEHOLDER_IMAGE, product.name)}
+                  className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg bg-slate-900/70 px-2 py-1 text-xs font-medium text-white transition hover:bg-slate-900"
+                >
+                  <Maximize2 size={14} />
+                  Ver
+                </button>
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-200/60 to-transparent" />
+              </div>
               <div className="space-y-2 p-4">
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="line-clamp-1 text-lg font-semibold text-slate-800">{product.name}</h3>
@@ -232,6 +290,68 @@ function ProductList() {
         }
         onConfirm={modal.onConfirm}
       />
+
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/90 p-4"
+          onClick={closeImageViewer}
+        >
+          <div className="absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-2 rounded-xl bg-slate-900/80 p-2 text-white">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                applyZoom(zoom - 0.2)
+              }}
+              className="rounded-lg p-2 hover:bg-white/10"
+            >
+              <Minus size={16} />
+            </button>
+            <span className="min-w-14 text-center text-xs font-semibold">{Math.round(zoom * 100)}%</span>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                applyZoom(zoom + 0.2)
+              }}
+              className="rounded-lg p-2 hover:bg-white/10"
+            >
+              <ZoomIn size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setZoom(1)
+              }}
+              className="rounded-lg p-2 hover:bg-white/10"
+            >
+              <RotateCcw size={16} />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={closeImageViewer}
+            className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
+          >
+            <X size={20} />
+          </button>
+          <img
+            src={expandedImage.src}
+            alt={expandedImage.alt}
+            className="max-h-[90vh] w-auto max-w-[95vw] rounded-xl object-contain shadow-2xl transition-transform duration-100"
+            style={{ transform: `scale(${zoom})` }}
+            onClick={(event) => event.stopPropagation()}
+            onWheel={handleWheelZoom}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onError={(event) => {
+              event.currentTarget.src = PLACEHOLDER_IMAGE
+            }}
+          />
+        </div>
+      )}
     </main>
   )
 }
